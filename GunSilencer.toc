@@ -1,0 +1,12 @@
+## Interface: 120100, 50504, 38002, 20506, 11509, 16001
+## Title: GunSilencer
+## Author: sandervspl
+## Notes: Replaces your gun shots with a silenced sound
+## Version: @project-version@
+## DefaultState: enabled
+## SavedVariables: GunSilencerDB
+## X-Category: Audio & Video
+## X-Website: https://github.com/sandervspl/gun-silencer
+## X-Curse-Project-ID: 1714814
+
+GunSilencer.lua

@@ -1,0 +1,11 @@
+package-as: GunSilencer
+
+ignore:
+  - .github
+  - .gitignore
+  - .gitattributes
+  - .pkgmeta
+  - Tests
+  - scripts
+  - assets
+  - README.md

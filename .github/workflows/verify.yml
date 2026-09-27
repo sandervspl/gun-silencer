@@ -1,0 +1,22 @@
+name: Verify addon
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Lua
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes lua5.1
+      - name: Exercise addon event flows
+        run: sh scripts/verify.sh
+      - name: Save verification artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gunsilencer-e2e
+          path: Tests/artifacts/e2e-result.txt
