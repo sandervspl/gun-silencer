@@ -1,10 +1,39 @@
 # GunSilencer
 
-GunSilencer mutes WoW's gun firing and reload sound files while your character has a gun equipped, then plays a silenced shot for recognized gun attacks. It needs no WeakAuras or Details! installation.
+GunSilencer mutes WoW's gun firing and reload sound files while your character has a gun equipped, then plays one of three silenced shots and a matching reload sound for recognized gun attacks. It needs no WeakAuras or Details! installation.
 
 ## Install
 
-Copy this folder to `World of Warcraft/<game version>/Interface/AddOns/GunSilencer`, then restart the game. On Windows, `scripts/copy-to-wow.ps1` finds installed WoW clients and copies the addon; pass a WoW root with `-WowRoot` if it is not found automatically. Use `-WhatIf` to preview the destinations.
+Install the complete addon folder for the game version you play. Close the game, then put a folder named exactly `GunSilencer` in that version's `Interface/AddOns` directory. Use the `GunSilencer` folder from a release ZIP, or create it from source by copying `GunSilencer.toc`, `GunSilencer.lua`, and the entire `Sound` folder into it. The in-game sound path uses the exact `GunSilencer` folder name.
+
+| Game version | Folder under `World of Warcraft` |
+| --- | --- |
+| Retail / Midnight | `_retail_` |
+| Classic progression (including Mists of Pandaria Classic) | `_classic_` |
+| Classic Era, Hardcore, and Season of Discovery | `_classic_era_` |
+| Burning Crusade Anniversary | `_anniversary_` |
+| Forever beta | `_classic_beta_` |
+
+For example, Forever needs this complete addon layout:
+
+```text
+World of Warcraft\_classic_beta_\Interface\AddOns\GunSilencer\
+  GunSilencer.toc
+  GunSilencer.lua
+  Sound\Item\Weapons\Gun\
+    GunFire01.ogg
+    GunFire02.ogg
+    GunFire03.ogg
+    GunLoad01.ogg
+    GunLoad02.ogg
+    GunLoad03.ogg
+```
+
+Use the same layout under each version's folder in the table. When updating an older GunSilencer install, copy the current Lua file and sound tree together; older Lua files point to the former `Media` path. Copying only `Sound\Item\Weapons\Gun` into the game-version root is the older loose-file override method; it does not work in Forever beta and is not the installation method for this addon. The Ogg must remain inside `Interface\AddOns\GunSilencer` so the addon can play it.
+
+Restart the game fully, enable GunSilencer in the character-select AddOns list, and equip a gun. If the addon is marked out of date, enable "Load out of date AddOns" and check the folder and file paths above. Type `/gunsilencer` in chat to see whether the addon is on; use `/gunsilencer on` if needed. Keep Sound Effects enabled in the game's audio settings.
+
+On Windows, `scripts/copy-to-wow.ps1` finds installed WoW clients and copies the complete addon, including the nested sound file, to each detected version. Pass a WoW root with `-WowRoot` if it is not found automatically. Use `-WhatIf` to preview the destinations.
 
 Examples:
 
@@ -22,7 +51,7 @@ Examples:
 
 The shorter `/gsilencer` alias also works. The setting is saved per account.
 
-Classic uses ranged combat log events for Auto Shot and selected shot spells. Retail Midnight blocks addon access to the combat log, so Retail uses your character's spellcast events for Auto Shot and selected shot spells. Sounds attached to other spells may still play in Retail. Muting game sound files is global while you have a gun equipped, so nearby players' original gun sounds are muted too.
+Classic uses ranged combat log events for Auto Shot and selected shot spells. Retail Midnight blocks addon access to the combat log, so Retail uses your character's spellcast events for Auto Shot and selected shot spells. GunFire variants cycle from 01 to 03; the matching GunLoad sound plays about 0.45 seconds after each recognized shot. Reload timing is approximate because the addon has no separate reload event. Sounds attached to other spells may still play in Retail. Muting game sound files is global while you have a gun equipped, so nearby players' original gun sounds are muted too.
 
 ## Verify and release
 

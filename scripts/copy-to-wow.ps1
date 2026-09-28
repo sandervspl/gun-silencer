@@ -10,7 +10,7 @@ $ErrorActionPreference = "Stop"
 
 $addonName = "GunSilencer"
 $sourceRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
-$sourceDirectories = @("Media")
+$sourceDirectories = @("Sound")
 $sourceFiles = @(
     "GunSilencer.lua",
     "GunSilencer.toc"

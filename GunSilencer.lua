@@ -3,7 +3,8 @@ local frame = CreateFrame("Frame")
 
 -- IDs from the Wago "Mute Guns" aura (WotLK) and "Cow Mute Sounds".
 local gunSounds = { 567617, 567721, 567718, 567722, 567719, 567720, 567723 }
-local silencedShot = "Interface\\AddOns\\GunSilencer\\Media\\GunFire01.ogg"
+local soundDirectory = "Interface\\AddOns\\GunSilencer\\Sound\\Item\\Weapons\\Gun\\"
+local reloadDelay = 0.45
 local retail = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
 
 -- Gun-based shot abilities that generate a cast event instead of RANGE_DAMAGE.
@@ -21,6 +22,8 @@ local shotSpells = {
 }
 
 local muted = false
+local muteGeneration = 0
+local nextVariant = 1
 
 local function isGunEquipped()
     local getInfo = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
@@ -55,10 +58,27 @@ local function updateMutes()
         end
     end
     muted = shouldMute
+    muteGeneration = muteGeneration + 1
 end
 
 local function playReplacement()
-    PlaySoundFile(silencedShot, "SFX")
+    local variant = nextVariant
+    nextVariant = variant == 3 and 1 or variant + 1
+    local suffix = "0" .. variant .. ".ogg"
+    PlaySoundFile(soundDirectory .. "GunFire" .. suffix, "SFX")
+
+    local generation = muteGeneration
+    local function playReload()
+        if muted and muteGeneration == generation then
+            PlaySoundFile(soundDirectory .. "GunLoad" .. suffix, "SFX")
+        end
+    end
+
+    if C_Timer and type(C_Timer.After) == "function" then
+        C_Timer.After(reloadDelay, playReload)
+    else
+        playReload()
+    end
 end
 
 local function printStatus()
