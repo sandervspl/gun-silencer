@@ -12,5 +12,10 @@ The addon can fail in these ways:
 8. Shot variants do not cycle through 01, 02, and 03, or the paired reload variant is wrong.
 9. A delayed reload plays after switching away from a gun or disabling and re-enabling the addon.
 10. A client without the timer API fails to play a reload sound at all.
+11. A supported Hunter shot outside the original small spell list stays silent while gun sounds are muted.
+12. Forever registers a restricted combat-log event, or misses repeated Auto Shots because it does not use its ranged swing event.
+13. A missing or unloadable replacement sound leaves every later gun shot muted for the rest of the session.
+14. Classic higher ranks of a supported shot use different spell IDs and stay silent even though the rank-one spell plays.
+15. Temporarily disabling Sound Effects is mistaken for a missing sound file and permanently disables replacements after sound is re-enabled.
 
-`e2e.lua` loads the real addon in simulated Classic and Retail client sessions and checks the complete event flow, chat commands, and sound selection. Run it through `scripts/verify.sh`; the script writes `Tests/artifacts/e2e-result.txt` with the command result. An in-game pass with a hunter and a gun is still needed to confirm exact audio timing in the client.
+`e2e.lua` loads the real addon in simulated Classic, Retail, and Forever client sessions and checks the complete event flow, chat commands, and sound selection. Run it through `scripts/verify.sh`; the script writes `Tests/artifacts/e2e-result.txt` with the command result. An in-game pass with a hunter and a gun is still needed to confirm exact audio timing in the client.

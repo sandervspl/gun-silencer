@@ -11,7 +11,9 @@ local function soundPath(kind, variant)
     return addonSoundDirectory .. kind .. "0" .. variant .. ".ogg"
 end
 
-local function session(retail)
+local function session(kind)
+    local retail = kind ~= "Classic"
+    local forever = kind == "Forever"
     local state = {
         weapon = 1001,
         muted = {},
@@ -20,13 +22,29 @@ local function session(retail)
         timers = {},
         events = {},
         log = nil,
+        soundFails = {},
+        soundEffectsEnabled = true,
+        messages = {},
     }
 
     WOW_PROJECT_MAINLINE = 1
     WOW_PROJECT_ID = retail and 1 or 2
+    Enum = forever and { PlayerSwingType = { MainHand = 0, OffHand = 1, Ranged = 2 } } or nil
     GunSilencerDB = nil
     SlashCmdList = {}
-    DEFAULT_CHAT_FRAME = { AddMessage = function() end }
+    DEFAULT_CHAT_FRAME = { AddMessage = function(_, message) state.messages[#state.messages + 1] = message end }
+    local spellNames = {
+        [3044] = "Arkaner Schuss", [14281] = "Arkaner Schuss",
+        [2643] = "Mehrfachschuss", [14288] = "Mehrfachschuss",
+        [19434] = "Gezielter Schuss", [20900] = "Gezielter Schuss",
+    }
+    C_Spell = { GetSpellName = function(spellID) return spellNames[spellID] end }
+    C_CVar = { GetCVar = function(name)
+        if name == "Sound_EnableSFX" then
+            return state.soundEffectsEnabled and "1" or "0"
+        end
+        return "1"
+    end }
     C_Item = {
         GetItemInfoInstant = function(itemID)
             if itemID == 1001 then
@@ -48,6 +66,9 @@ local function session(retail)
     PlaySoundFile = function(path, channel)
         equal(channel, "SFX", "sound channel")
         assert(path:sub(1, #addonSoundDirectory) == addonSoundDirectory, "sound must use the addon directory")
+        if not state.soundEffectsEnabled or state.soundFails[path] then
+            return nil
+        end
         state.played[#state.played + 1] = path
         return true
     end
@@ -84,7 +105,9 @@ local function session(retail)
     end
     local function ownShot(variant, subevent, spellID)
         local oldCount = #state.played
-        if retail then
+        if forever and not spellID then
+            fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+        elseif retail then
             fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast", spellID or 75)
         else
             state.log = { subevent or "RANGE_DAMAGE", "Player-1", spellID or 75 }
@@ -99,19 +122,33 @@ local function session(retail)
     fire("PLAYER_ENTERING_WORLD")
     equal(#state.muted, 7, "initial gun mutes")
     equal(state.events.COMBAT_LOG_EVENT_UNFILTERED, not retail or nil, "combat log registration")
+    equal(state.events.PLAYER_SWING, forever or nil, "Forever ranged swing registration")
 
     if retail then
         ownShot(1)
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-2", 187650)
         fire("UNIT_SPELLCAST_SUCCEEDED", "target", "cast-3", 75)
+        if forever then
+            fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-auto", 75)
+            fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.MainHand)
+        end
         equal(#state.played, 2, "non-shot and other unit ignored")
         ownShot(2, nil, 185358)
         ownShot(3)
         ownShot(1)
+        ownShot(2, nil, 193455) -- Cobra Shot
+        ownShot(3, nil, 217200) -- Barbed Shot
+        ownShot(1, nil, 320976) -- Kill Shot
+        ownShot(2, nil, 257044) -- Rapid Fire
+        ownShot(3, nil, 5116) -- Concussive Shot
+        ownShot(1, nil, 343246) -- Tranquilizing Shot
     else
         state.log = { "RANGE_DAMAGE", "Player-2", 75 }
         fire("COMBAT_LOG_EVENT_UNFILTERED")
         equal(#state.played, 0, "other player's shot ignored")
+        state.log = { "SPELL_CAST_SUCCESS", "Player-1", 187650 }
+        fire("COMBAT_LOG_EVENT_UNFILTERED")
+        equal(#state.played, 0, "non-shot cast ignored")
         ownShot(1)
         ownShot(2, "RANGE_MISSED")
         ownShot(3, "SPELL_CAST_SUCCESS", 3044)
@@ -119,10 +156,24 @@ local function session(retail)
         fire("COMBAT_LOG_EVENT_UNFILTERED")
         equal(#state.played, 6, "Auto Shot not doubled")
         ownShot(1)
+        ownShot(2, "SPELL_CAST_SUCCESS", 53351) -- Kill Shot
+        ownShot(3, "SPELL_CAST_SUCCESS", 77767) -- Cobra Shot
+        ownShot(1, "SPELL_CAST_SUCCESS", 5116) -- Concussive Shot
+        ownShot(2, "SPELL_CAST_SUCCESS", 19801) -- Tranquilizing Shot
+        ownShot(3, "SPELL_CAST_SUCCESS", 19503) -- Scatter Shot
+        ownShot(1, "SPELL_CAST_SUCCESS", 20736) -- Distracting Shot
+        ownShot(2, "SPELL_CAST_SUCCESS", 14281) -- Arcane Shot rank 2
+        ownShot(3, "SPELL_CAST_SUCCESS", 14288) -- Multi-Shot rank 2
+        ownShot(1, "SPELL_CAST_SUCCESS", 20900) -- Aimed Shot rank 2
+        ownShot(2, "SPELL_CAST_SUCCESS", 34120) -- Steady Shot in Burning Crusade Classic
+        ownShot(3, "SPELL_CAST_SUCCESS", 1978) -- Serpent Sting
+        ownShot(1, "SPELL_CAST_SUCCESS", 3043) -- Scorpid Sting
     end
 
     local beforePending = #state.played
-    if retail then
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-pending", 75)
     else
         state.log = { "RANGE_DAMAGE", "Player-1", 75 }
@@ -135,7 +186,9 @@ local function session(retail)
     runTimers()
     equal(#state.played, beforePending + 1, "bow cancels delayed reload")
     local oldCount = #state.played
-    if retail then
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-4", 75)
     else
         state.log = { "RANGE_DAMAGE", "Player-1", 75 }
@@ -149,7 +202,9 @@ local function session(retail)
     equal(#state.muted, 7, "disabled addon does not mute")
     SlashCmdList.GUNSILENCER("on")
     equal(#state.muted, 14, "enabling remutes")
-    if retail then
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-5", 75)
     else
         state.log = { "RANGE_DAMAGE", "Player-1", 75 }
@@ -164,7 +219,9 @@ local function session(retail)
 
     C_Timer = nil
     local beforeFallback = #state.played
-    if retail then
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-fallback", 75)
     else
         state.log = { "RANGE_DAMAGE", "Player-1", 75 }
@@ -172,7 +229,58 @@ local function session(retail)
     end
     equal(state.played[beforeFallback + 1], soundPath("GunFire", 2), "fallback shot")
     equal(state.played[beforeFallback + 2], soundPath("GunLoad", 2), "fallback reload")
-    return retail and "Retail" or "Classic"
+
+    state.soundEffectsEnabled = false
+    local beforeMutedSFX = #state.unmuted
+    local beforeDisabledSFX = #state.played
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
+        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-muted-sfx", 75)
+    else
+        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
+        fire("COMBAT_LOG_EVENT_UNFILTERED")
+    end
+    equal(#state.unmuted, beforeMutedSFX, "disabled Sound Effects do not turn off replacements")
+    equal(#state.played, beforeDisabledSFX, "disabled Sound Effects make no sound")
+    state.soundEffectsEnabled = true
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
+        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-restored-sfx", 75)
+    else
+        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
+        fire("COMBAT_LOG_EVENT_UNFILTERED")
+    end
+    equal(state.played[beforeDisabledSFX + 1], soundPath("GunFire", 1), "shot returns when Sound Effects are enabled")
+    equal(state.played[beforeDisabledSFX + 2], soundPath("GunLoad", 1), "reload returns when Sound Effects are enabled")
+
+    state.soundFails[soundPath("GunFire", 2)] = true
+    local beforeFailure = #state.played
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
+        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-failed-audio", 75)
+    else
+        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
+        fire("COMBAT_LOG_EVENT_UNFILTERED")
+    end
+    equal(#state.unmuted, 21, "failed sound restores original gun sounds")
+    equal(#state.played, beforeFailure, "failed sound is not counted as playback")
+    equal(#state.messages, 5, "failed sound reports the fallback once")
+    fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
+    equal(#state.muted, 21, "failed sound does not remute on equipment updates")
+    if forever then
+        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+    elseif retail then
+        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-after-failure", 75)
+    else
+        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
+        fire("COMBAT_LOG_EVENT_UNFILTERED")
+    end
+    equal(#state.played, beforeFailure, "shots after audio failure use restored game sounds")
+    equal(#state.messages, 5, "audio failure warning is shown only once")
+    return kind
 end
 
 for _, kind in ipairs({ "GunFire", "GunLoad" }) do
@@ -186,6 +294,7 @@ end
 local toc = assert(io.open("GunSilencer.toc", "r")):read("*a")
 assert(toc:find("GunSilencer.lua", 1, true), "TOC loads the addon")
 
-print(session(false) .. ": PASS")
-print(session(true) .. ": PASS")
+print(session("Classic") .. ": PASS")
+print(session("Retail") .. ": PASS")
+print(session("Forever") .. ": PASS")
 print("Six sound assets and TOC: PASS")
