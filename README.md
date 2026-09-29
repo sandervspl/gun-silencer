@@ -4,7 +4,7 @@ GunSilencer mutes WoW's gun firing and reload sound files while your character h
 
 ## Install
 
-Install the complete addon folder for the game version you play. Close the game, then put a folder named exactly `GunSilencer` in that version's `Interface/AddOns` directory. Use the `GunSilencer` folder from a release ZIP, or create it from source by copying `GunSilencer.toc`, `GunSilencer.lua`, and the entire `Sound` folder into it. The in-game sound path uses the exact `GunSilencer` folder name.
+Install the complete addon folder for the game version you play. Close the game, then put a folder named exactly `GunSilencer` in that version's `Interface/AddOns` directory. Use the `GunSilencer` folder from a release ZIP, or create it from source by copying `GunSilencer.toc`, `GunSilencer.lua`, and the entire `Sound` and `Media` folders into it. The in-game sound and icon paths use the exact `GunSilencer` folder name.
 
 | Game version | Folder under `World of Warcraft` |
 | --- | --- |
@@ -20,6 +20,7 @@ For example, Forever needs this complete addon layout:
 World of Warcraft\_classic_beta_\Interface\AddOns\GunSilencer\
   GunSilencer.toc
   GunSilencer.lua
+  Media\icon.tga
   Sound\Item\Weapons\Gun\
     GunFire01.ogg
     GunFire02.ogg

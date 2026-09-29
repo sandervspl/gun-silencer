@@ -1,4 +1,5 @@
 ## Interface: 120100, 50504, 38002, 20506, 11509, 16001
+## IconTexture: Interface\AddOns\GunSilencer\Media\icon
 ## Title: GunSilencer
 ## Author: sandervspl
 ## Notes: Replaces your gun shots with a silenced sound
