@@ -9,7 +9,7 @@ The addon can fail in these ways:
 5. Any of the six shipped sounds differs from the WowInterface pack, is absent from the package, or cannot be played at the addon path.
 6. It tries to register the combat log in Retail Midnight, where that event is restricted.
 7. The release package omits any of the six sounds or includes test and development files.
-8. Shot variants do not cycle through 01, 02, and 03, or the paired reload variant is wrong.
+8. A shot does not randomly select one of variants 01, 02, and 03, consecutive shots cannot repeat a variant, or a delayed reload uses a different variant from its shot when several shots are pending.
 9. A delayed reload plays after switching away from a gun or disabling and re-enabling the addon.
 10. A client without the timer API fails to play a reload sound at all.
 11. A supported Hunter shot outside the original small spell list stays silent while gun sounds are muted.

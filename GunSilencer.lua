@@ -71,7 +71,6 @@ end
 local muted = false
 local soundAvailable = true
 local muteGeneration = 0
-local nextVariant = 1
 
 local function isGunEquipped()
     local getInfo = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
@@ -126,8 +125,7 @@ local function playSound(path)
 end
 
 local function playReplacement()
-    local variant = nextVariant
-    nextVariant = variant == 3 and 1 or variant + 1
+    local variant = math.random(1, 3)
     local suffix = "0" .. variant .. ".ogg"
     if not playSound(soundDirectory .. "GunFire" .. suffix) then
         return

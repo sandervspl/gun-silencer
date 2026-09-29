@@ -11,6 +11,8 @@ local function soundPath(kind, variant)
     return addonSoundDirectory .. kind .. "0" .. variant .. ".ogg"
 end
 
+local originalRandom = math.random
+
 local function session(kind)
     local retail = kind ~= "Classic"
     local forever = kind == "Forever"
@@ -25,6 +27,7 @@ local function session(kind)
         soundFails = {},
         soundEffectsEnabled = true,
         messages = {},
+        randomVariants = {},
     }
 
     WOW_PROJECT_MAINLINE = 1
@@ -91,6 +94,16 @@ local function session(kind)
         return frame
     end
 
+    local function expectVariant(variant)
+        state.randomVariants[#state.randomVariants + 1] = variant
+    end
+    math.random = function(first, last)
+        equal(first, 1, "first random variant")
+        equal(last, 3, "last random variant")
+        assert(#state.randomVariants > 0, "unexpected random variant selection")
+        return table.remove(state.randomVariants, 1)
+    end
+
     assert(loadfile("GunSilencer.lua"))("GunSilencer")
     local function fire(event, ...)
         assert(state.events[event], "event was not registered: " .. event)
@@ -105,6 +118,7 @@ local function session(kind)
     end
     local function ownShot(variant, subevent, spellID)
         local oldCount = #state.played
+        expectVariant(variant)
         if forever and not spellID then
             fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
         elseif retail then
@@ -118,6 +132,16 @@ local function session(kind)
         runTimers()
         equal(state.played[oldCount + 2], soundPath("GunLoad", variant), "matching reload variant")
     end
+    local function autoShot(tag)
+        if forever then
+            fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
+        elseif retail then
+            fire("UNIT_SPELLCAST_SUCCEEDED", "player", tag, 75)
+        else
+            state.log = { "RANGE_DAMAGE", "Player-1", 75 }
+            fire("COMBAT_LOG_EVENT_UNFILTERED")
+        end
+    end
     fire("ADDON_LOADED", "GunSilencer")
     fire("PLAYER_ENTERING_WORLD")
     equal(#state.muted, 7, "initial gun mutes")
@@ -125,7 +149,7 @@ local function session(kind)
     equal(state.events.PLAYER_SWING, forever or nil, "Forever ranged swing registration")
 
     if retail then
-        ownShot(1)
+        ownShot(3)
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-2", 187650)
         fire("UNIT_SPELLCAST_SUCCEEDED", "target", "cast-3", 75)
         if forever then
@@ -133,9 +157,9 @@ local function session(kind)
             fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.MainHand)
         end
         equal(#state.played, 2, "non-shot and other unit ignored")
-        ownShot(2, nil, 185358)
-        ownShot(3)
+        ownShot(3, nil, 185358)
         ownShot(1)
+        ownShot(2)
         ownShot(2, nil, 193455) -- Cobra Shot
         ownShot(3, nil, 217200) -- Barbed Shot
         ownShot(1, nil, 320976) -- Kill Shot
@@ -149,9 +173,9 @@ local function session(kind)
         state.log = { "SPELL_CAST_SUCCESS", "Player-1", 187650 }
         fire("COMBAT_LOG_EVENT_UNFILTERED")
         equal(#state.played, 0, "non-shot cast ignored")
-        ownShot(1)
-        ownShot(2, "RANGE_MISSED")
-        ownShot(3, "SPELL_CAST_SUCCESS", 3044)
+        ownShot(3)
+        ownShot(3, "RANGE_MISSED")
+        ownShot(1, "SPELL_CAST_SUCCESS", 3044)
         state.log = { "SPELL_CAST_SUCCESS", "Player-1", 75 }
         fire("COMBAT_LOG_EVENT_UNFILTERED")
         equal(#state.played, 6, "Auto Shot not doubled")
@@ -170,15 +194,21 @@ local function session(kind)
         ownShot(1, "SPELL_CAST_SUCCESS", 3043) -- Scorpid Sting
     end
 
+    local beforeOverlap = #state.played
+    expectVariant(2)
+    autoShot("overlap-1")
+    expectVariant(1)
+    autoShot("overlap-2")
+    equal(state.played[beforeOverlap + 1], soundPath("GunFire", 2), "first overlapping shot")
+    equal(state.played[beforeOverlap + 2], soundPath("GunFire", 1), "second overlapping shot")
+    equal(#state.timers, 2, "both overlapping reloads scheduled")
+    runTimers()
+    equal(state.played[beforeOverlap + 3], soundPath("GunLoad", 2), "first overlapping reload stays paired")
+    equal(state.played[beforeOverlap + 4], soundPath("GunLoad", 1), "second overlapping reload stays paired")
+
     local beforePending = #state.played
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-pending", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    expectVariant(2)
+    autoShot("cast-pending")
     equal(state.played[beforePending + 1], soundPath("GunFire", 2), "pending shot variant")
     state.weapon = 1002
     fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
@@ -186,14 +216,7 @@ local function session(kind)
     runTimers()
     equal(#state.played, beforePending + 1, "bow cancels delayed reload")
     local oldCount = #state.played
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-4", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    autoShot("cast-4")
     equal(#state.played, oldCount, "bow shot ignored")
 
     SlashCmdList.GUNSILENCER("off")
@@ -202,14 +225,8 @@ local function session(kind)
     equal(#state.muted, 7, "disabled addon does not mute")
     SlashCmdList.GUNSILENCER("on")
     equal(#state.muted, 14, "enabling remutes")
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-5", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    expectVariant(3)
+    autoShot("cast-5")
     equal(state.played[oldCount + 1], soundPath("GunFire", 3), "shot after reenabling")
     SlashCmdList.GUNSILENCER("off")
     SlashCmdList.GUNSILENCER("on")
@@ -219,67 +236,38 @@ local function session(kind)
 
     C_Timer = nil
     local beforeFallback = #state.played
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-fallback", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    expectVariant(2)
+    autoShot("cast-fallback")
     equal(state.played[beforeFallback + 1], soundPath("GunFire", 2), "fallback shot")
     equal(state.played[beforeFallback + 2], soundPath("GunLoad", 2), "fallback reload")
 
     state.soundEffectsEnabled = false
     local beforeMutedSFX = #state.unmuted
     local beforeDisabledSFX = #state.played
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-muted-sfx", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    expectVariant(1)
+    autoShot("cast-muted-sfx")
     equal(#state.unmuted, beforeMutedSFX, "disabled Sound Effects do not turn off replacements")
     equal(#state.played, beforeDisabledSFX, "disabled Sound Effects make no sound")
     state.soundEffectsEnabled = true
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-restored-sfx", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    expectVariant(1)
+    autoShot("cast-restored-sfx")
     equal(state.played[beforeDisabledSFX + 1], soundPath("GunFire", 1), "shot returns when Sound Effects are enabled")
     equal(state.played[beforeDisabledSFX + 2], soundPath("GunLoad", 1), "reload returns when Sound Effects are enabled")
 
     state.soundFails[soundPath("GunFire", 2)] = true
     local beforeFailure = #state.played
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-failed-audio", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    expectVariant(2)
+    autoShot("cast-failed-audio")
     equal(#state.unmuted, 21, "failed sound restores original gun sounds")
     equal(#state.played, beforeFailure, "failed sound is not counted as playback")
     equal(#state.messages, 5, "failed sound reports the fallback once")
     fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
     equal(#state.muted, 21, "failed sound does not remute on equipment updates")
-    if forever then
-        fire("PLAYER_SWING", 2.8, Enum.PlayerSwingType.Ranged)
-    elseif retail then
-        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-after-failure", 75)
-    else
-        state.log = { "RANGE_DAMAGE", "Player-1", 75 }
-        fire("COMBAT_LOG_EVENT_UNFILTERED")
-    end
+    autoShot("cast-after-failure")
     equal(#state.played, beforeFailure, "shots after audio failure use restored game sounds")
     equal(#state.messages, 5, "audio failure warning is shown only once")
+    equal(#state.randomVariants, 0, "all queued random variants consumed")
+    math.random = originalRandom
     return kind
 end
 
