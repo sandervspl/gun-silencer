@@ -206,6 +206,22 @@ local function session(kind)
     equal(state.played[beforeOverlap + 3], soundPath("GunLoad", 2), "first overlapping reload stays paired")
     equal(state.played[beforeOverlap + 4], soundPath("GunLoad", 1), "second overlapping reload stays paired")
 
+    local beforeHearthMutes = #state.muted
+    local beforeHearthSounds = #state.played
+    expectVariant(2)
+    autoShot("cast-before-hearth")
+    equal(#state.timers, 1, "reload pending before hearth")
+    -- Equipment can be briefly unavailable when the loading-screen event fires.
+    state.weapon = nil
+    local beforeHearthUnmutes = #state.unmuted
+    fire("PLAYER_ENTERING_WORLD")
+    equal(#state.muted, beforeHearthMutes + 7, "hearth reapplies all gun mutes")
+    equal(#state.unmuted, beforeHearthUnmutes, "hearth does not unmute an equipped gun")
+    state.weapon = 1001
+    runTimers()
+    equal(#state.played, beforeHearthSounds + 1, "hearth cancels the old reload")
+    ownShot(1)
+
     local beforePending = #state.played
     expectVariant(2)
     autoShot("cast-pending")
@@ -222,9 +238,9 @@ local function session(kind)
     SlashCmdList.GUNSILENCER("off")
     state.weapon = 1001
     fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
-    equal(#state.muted, 7, "disabled addon does not mute")
+    equal(#state.muted, 14, "disabled addon does not mute")
     SlashCmdList.GUNSILENCER("on")
-    equal(#state.muted, 14, "enabling remutes")
+    equal(#state.muted, 21, "enabling remutes")
     expectVariant(3)
     autoShot("cast-5")
     equal(state.played[oldCount + 1], soundPath("GunFire", 3), "shot after reenabling")
@@ -262,7 +278,7 @@ local function session(kind)
     equal(#state.played, beforeFailure, "failed sound is not counted as playback")
     equal(#state.messages, 5, "failed sound reports the fallback once")
     fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
-    equal(#state.muted, 21, "failed sound does not remute on equipment updates")
+    equal(#state.muted, 28, "failed sound does not remute on equipment updates")
     autoShot("cast-after-failure")
     equal(#state.played, beforeFailure, "shots after audio failure use restored game sounds")
     equal(#state.messages, 5, "audio failure warning is shown only once")

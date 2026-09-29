@@ -91,12 +91,7 @@ local function isGunEquipped()
     return false
 end
 
-local function updateMutes()
-    local shouldMute = GunSilencerDB.enabled and soundAvailable and isGunEquipped()
-    if shouldMute == muted then
-        return
-    end
-
+local function applyMutes(shouldMute)
     for _, soundID in ipairs(gunSounds) do
         if shouldMute then
             MuteSoundFile(soundID)
@@ -104,6 +99,15 @@ local function updateMutes()
             UnmuteSoundFile(soundID)
         end
     end
+end
+
+local function updateMutes()
+    local shouldMute = GunSilencerDB.enabled and soundAvailable and isGunEquipped()
+    if shouldMute == muted then
+        return
+    end
+
+    applyMutes(shouldMute)
     muted = shouldMute
     muteGeneration = muteGeneration + 1
 end
@@ -186,7 +190,15 @@ frame:SetScript("OnEvent", function(_, event, ...)
         else
             frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         end
-    elseif event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_EQUIPMENT_CHANGED" then
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        if muted then
+            -- Equipment can be briefly unavailable here; retain and reapply the mute.
+            applyMutes(true)
+            muteGeneration = muteGeneration + 1
+        else
+            updateMutes()
+        end
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" then
         updateMutes()
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local unit, _, spellID = ...
