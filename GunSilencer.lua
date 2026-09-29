@@ -72,7 +72,31 @@ local muted = false
 local soundAvailable = true
 local muteGeneration = 0
 
-local function isGunEquipped()
+local function getAppliedAppearanceItemID(slot)
+    if not (C_Transmog and C_Transmog.GetSlotVisualInfo and
+            C_TransmogCollection and C_TransmogCollection.GetSourceInfo and
+            Enum and Enum.TransmogType and Enum.TransmogModification) then
+        return nil
+    end
+
+    local location = {
+        slotID = slot,
+        type = Enum.TransmogType.Appearance,
+        modification = Enum.TransmogModification.Main or Enum.TransmogModification.None,
+    }
+    local first, _, appliedSourceID = C_Transmog.GetSlotVisualInfo(location)
+    if type(first) == "table" then
+        appliedSourceID = first.appliedSourceID
+    end
+    if not appliedSourceID or appliedSourceID == 0 then
+        return nil
+    end
+
+    local sourceInfo = C_TransmogCollection.GetSourceInfo(appliedSourceID)
+    return sourceInfo and sourceInfo.itemID
+end
+
+local function isGunVisible()
     local getInfo = C_Item and C_Item.GetItemInfoInstant or GetItemInfoInstant
     if not getInfo then
         return false
@@ -82,7 +106,8 @@ local function isGunEquipped()
     for _, slot in ipairs({ 18, 16 }) do
         local itemID = GetInventoryItemID("player", slot)
         if itemID then
-            local _, _, _, _, _, classID, subclassID = getInfo(itemID)
+            local appearanceItemID = getAppliedAppearanceItemID(slot)
+            local _, _, _, _, _, classID, subclassID = getInfo(appearanceItemID or itemID)
             if classID == 2 and subclassID == 3 then
                 return true
             end
@@ -102,7 +127,7 @@ local function applyMutes(shouldMute)
 end
 
 local function updateMutes()
-    local shouldMute = GunSilencerDB.enabled and soundAvailable and isGunEquipped()
+    local shouldMute = GunSilencerDB.enabled and soundAvailable and isGunVisible()
     if shouldMute == muted then
         return
     end
@@ -181,6 +206,12 @@ frame:SetScript("OnEvent", function(_, event, ...)
         end
         frame:RegisterEvent("PLAYER_ENTERING_WORLD")
         frame:RegisterEvent("PLAYER_EQUIPMENT_CHANGED")
+        if C_Transmog and C_Transmog.GetSlotVisualInfo then
+            frame:RegisterEvent("TRANSMOGRIFY_SUCCESS")
+            if C_TransmogOutfitInfo then
+                frame:RegisterEvent("TRANSMOG_DISPLAYED_OUTFIT_CHANGED")
+            end
+        end
         if retail then
             -- Midnight disallows addons from registering the combat log.
             frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
@@ -198,7 +229,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
         else
             updateMutes()
         end
-    elseif event == "PLAYER_EQUIPMENT_CHANGED" then
+    elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "TRANSMOGRIFY_SUCCESS" or
+            event == "TRANSMOG_DISPLAYED_OUTFIT_CHANGED" then
         updateMutes()
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
         local unit, _, spellID = ...

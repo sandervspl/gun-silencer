@@ -13,11 +13,12 @@ end
 
 local originalRandom = math.random
 
-local function session(kind)
+local function session(kind, transmogScenario)
     local retail = kind ~= "Classic"
     local forever = kind == "Forever"
     local state = {
-        weapon = 1001,
+        weapon = transmogScenario and 1002 or 1001,
+        appearance = transmogScenario and 2001 or nil,
         muted = {},
         unmuted = {},
         played = {},
@@ -32,7 +33,11 @@ local function session(kind)
 
     WOW_PROJECT_MAINLINE = 1
     WOW_PROJECT_ID = retail and 1 or 2
-    Enum = forever and { PlayerSwingType = { MainHand = 0, OffHand = 1, Ranged = 2 } } or nil
+    Enum = {
+        TransmogType = { Appearance = 0 },
+        TransmogModification = { Main = 0, None = 0 },
+        PlayerSwingType = forever and { MainHand = 0, OffHand = 1, Ranged = 2 } or nil,
+    }
     GunSilencerDB = nil
     SlashCmdList = {}
     DEFAULT_CHAT_FRAME = { AddMessage = function(_, message) state.messages[#state.messages + 1] = message end }
@@ -55,6 +60,24 @@ local function session(kind)
             elseif itemID == 1002 then
                 return itemID, "Weapon", "Bows", "INVTYPE_RANGED", 0, 2, 2
             end
+        end,
+    }
+    C_Transmog = {
+        GetSlotVisualInfo = function(location)
+            equal(location.slotID, retail and 16 or 18, "transmog location")
+            equal(location.type, Enum.TransmogType.Appearance, "appearance transmog type")
+            equal(location.modification, Enum.TransmogModification.Main, "main appearance")
+            if kind == "Retail" then
+                return { appliedSourceID = state.appearance or 0 }
+            end
+            return 0, 0, state.appearance or 0, 0, 0, 0, false
+        end,
+    }
+    C_TransmogOutfitInfo = kind == "Retail" and {} or nil
+    C_TransmogCollection = {
+        GetSourceInfo = function(sourceID)
+            if sourceID == 2001 then return { itemID = 1001 } end
+            if sourceID == 2002 then return { itemID = 1002 } end
         end,
     }
     GetInventoryItemID = function(_, slot)
@@ -147,6 +170,45 @@ local function session(kind)
     equal(#state.muted, 7, "initial gun mutes")
     equal(state.events.COMBAT_LOG_EVENT_UNFILTERED, not retail or nil, "combat log registration")
     equal(state.events.PLAYER_SWING, forever or nil, "Forever ranged swing registration")
+
+    if transmogScenario then
+        equal(state.events.TRANSMOGRIFY_SUCCESS, true, "appearance change event registration")
+        if kind == "Retail" then
+            equal(state.events.TRANSMOG_DISPLAYED_OUTFIT_CHANGED, true, "outfit change event registration")
+        else
+            equal(state.events.TRANSMOG_DISPLAYED_OUTFIT_CHANGED, nil, "outfit event absent on older clients")
+        end
+        ownShot(2)
+        local beforeChange = #state.played
+        expectVariant(1)
+        autoShot("before-appearance-change")
+        state.appearance = 2002
+        fire(kind == "Retail" and "TRANSMOG_DISPLAYED_OUTFIT_CHANGED" or "TRANSMOGRIFY_SUCCESS")
+        equal(#state.unmuted, 7, "bow appearance restores original gun sounds")
+        runTimers()
+        equal(#state.played, beforeChange + 1, "appearance change cancels delayed reload")
+        autoShot("bow-appearance-shot")
+        equal(#state.played, beforeChange + 1, "bow appearance shot ignored")
+
+        state.appearance = 2001
+        fire("TRANSMOGRIFY_SUCCESS")
+        equal(#state.muted, 14, "gun appearance reapplies mutes without swapping equipment")
+        ownShot(3)
+
+        state.weapon = 1001
+        state.appearance = 2002
+        fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
+        equal(#state.unmuted, 14, "gun equipped with bow appearance is not silenced")
+        autoShot("gun-with-bow-appearance")
+        equal(#state.played, beforeChange + 3, "gun with bow appearance shot ignored")
+        state.appearance = nil
+        fire("TRANSMOGRIFY_SUCCESS")
+        equal(#state.muted, 21, "plain gun is silenced again")
+        ownShot(1)
+        equal(#state.randomVariants, 0, "all transmog shot variants consumed")
+        math.random = originalRandom
+        return kind .. " transmog"
+    end
 
     if retail then
         ownShot(3)
@@ -301,4 +363,7 @@ assert(toc:find("GunSilencer.lua", 1, true), "TOC loads the addon")
 print(session("Classic") .. ": PASS")
 print(session("Retail") .. ": PASS")
 print(session("Forever") .. ": PASS")
+print(session("Classic", true) .. ": PASS")
+print(session("Retail", true) .. ": PASS")
+print(session("Forever", true) .. ": PASS")
 print("Six sound assets and TOC: PASS")

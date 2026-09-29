@@ -18,5 +18,8 @@ The addon can fail in these ways:
 14. Classic higher ranks of a supported shot use different spell IDs and stay silent even though the rank-one spell plays.
 15. Temporarily disabling Sound Effects is mistaken for a missing sound file and permanently disables replacements after sound is re-enabled.
 16. A loading screen temporarily hides the equipped gun; the addon unmutes default gun sounds after hearthstoning even though the gun is still equipped.
+17. A bow with a gun appearance remains silent because detection only sees the equipped bow, or an applied appearance change is missed without an equipment change.
+18. A gun with a bow appearance gets silenced, or a pending reload still plays after changing the appearance away from a gun.
+19. Clients that return separate transmog values instead of a structure fail to detect the applied appearance.
 
-`e2e.lua` loads the real addon in simulated Classic, Retail, and Forever client sessions and checks the complete event flow, chat commands, and sound selection. Run it through `scripts/verify.sh`; the script writes `Tests/artifacts/e2e-result.txt` with the command result. An in-game pass with a hunter and a gun is still needed to confirm exact audio timing in the client.
+`e2e.lua` loads the real addon in simulated Classic, Retail, and Forever client sessions and checks the complete event flow, chat commands, sound selection, and appearance changes. Run it through `scripts/verify.sh`; the script writes `Tests/artifacts/e2e-result.txt` with the command result. An in-game pass with a hunter and a bow using a gun appearance is still needed to confirm exact audio timing in the client.
