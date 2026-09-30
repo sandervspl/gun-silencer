@@ -224,10 +224,10 @@ frame:SetScript("OnEvent", function(_, event, ...)
                 frame:RegisterEvent("TRANSMOG_DISPLAYED_OUTFIT_CHANGED")
             end
         end
+        frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
         if retail then
             -- Midnight disallows addons from registering the combat log.
             frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
-            frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
             frame:RegisterUnitEvent("UNIT_SPELLCAST_STOP", "player")
             frame:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", "player")
             frame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player")
@@ -252,7 +252,12 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "UNIT_SPELLCAST_START" then
         local unit, castGUID, spellID = ...
         if unit == "player" and isAimedShot(spellID) then
-            aimedShotCastGUID = castGUID
+            if retail then
+                aimedShotCastGUID = castGUID
+            end
+            if muted then
+                playSound(soundDirectory .. "GunLoad01.ogg")
+            end
         end
     elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED" or
             event == "UNIT_SPELLCAST_INTERRUPTED" then

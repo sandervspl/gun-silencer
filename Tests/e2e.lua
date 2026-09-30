@@ -189,6 +189,11 @@ local function session(kind, transmogScenario, aimedScenario)
         equal(#state.played, beforeChange + 1, "appearance change cancels delayed reload")
         autoShot("bow-appearance-shot")
         equal(#state.played, beforeChange + 1, "bow appearance shot ignored")
+        fire("UNIT_SPELLCAST_START", "player", "bow-aimed", 19434)
+        equal(#state.played, beforeChange + 1, "bow appearance Aimed Shot has no loading cue")
+        if retail then
+            fire("UNIT_SPELLCAST_STOP", "player", "bow-aimed", 19434)
+        end
 
         state.appearance = 2001
         fire("TRANSMOGRIFY_SUCCESS")
@@ -216,22 +221,23 @@ local function session(kind, transmogScenario, aimedScenario)
         expectVariant(2)
         autoShot("before-aimed")
         fire("UNIT_SPELLCAST_START", "player", "aimed-1", 20900)
+        equal(state.played[beforeAimed + 2], soundPath("GunLoad", 1), "Aimed Shot loading cue starts with the cast")
         autoShot("blocked-auto-1")
         autoShot("blocked-auto-2")
-        equal(#state.played, beforeAimed + 1, "Aimed Shot suppresses phantom Auto Shots")
+        equal(#state.played, beforeAimed + 2, "Aimed Shot suppresses phantom Auto Shots")
         equal(#state.timers, 1, "blocked Auto Shots schedule no reloads")
         runTimers()
-        equal(state.played[beforeAimed + 2], soundPath("GunLoad", 2), "real shot still reloads during Aimed Shot")
+        equal(state.played[beforeAimed + 3], soundPath("GunLoad", 2), "real shot still reloads during Aimed Shot")
 
         fire("UNIT_SPELLCAST_START", "target", "other-aimed", 19434)
         fire("UNIT_SPELLCAST_STOP", "target", "aimed-1", 20900)
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "unrelated", 187650)
         autoShot("still-blocked")
-        equal(#state.played, beforeAimed + 2, "other casts do not end Aimed Shot suppression")
+        equal(#state.played, beforeAimed + 3, "other casts do not end Aimed Shot suppression")
 
         expectVariant(1)
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "aimed-1", 20900)
-        equal(state.played[beforeAimed + 3], soundPath("GunFire", 1), "completed Aimed Shot plays its own sound")
+        equal(state.played[beforeAimed + 4], soundPath("GunFire", 1), "completed Aimed Shot plays its own sound")
         runTimers()
         fire("UNIT_SPELLCAST_STOP", "player", "aimed-1", 20900)
         ownShot(3)
@@ -307,6 +313,9 @@ local function session(kind, transmogScenario, aimedScenario)
         ownShot(1, "SPELL_CAST_SUCCESS", 20736) -- Distracting Shot
         ownShot(2, "SPELL_CAST_SUCCESS", 14281) -- Arcane Shot rank 2
         ownShot(3, "SPELL_CAST_SUCCESS", 14288) -- Multi-Shot rank 2
+        local beforeAimedCue = #state.played
+        fire("UNIT_SPELLCAST_START", "player", "classic-aimed", 20900)
+        equal(state.played[beforeAimedCue + 1], soundPath("GunLoad", 1), "Classic Aimed Shot loading cue")
         ownShot(1, "SPELL_CAST_SUCCESS", 20900) -- Aimed Shot rank 2
         ownShot(2, "SPELL_CAST_SUCCESS", 34120) -- Steady Shot in Burning Crusade Classic
         ownShot(3, "SPELL_CAST_SUCCESS", 1978) -- Serpent Sting
