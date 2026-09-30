@@ -58,7 +58,7 @@ If a replacement file cannot play while Sound Effects are enabled, the addon res
 
 ## Verify and release
 
-Run `sh scripts/verify.sh` where Lua is installed (WSL works on Windows). It loads the shipped Lua file in Classic, Retail, and Forever client simulations and writes `Tests/artifacts/e2e-result.txt`. The [verification plan](Tests/verification-plan.md) records the failure cases it exercises. For an in-game check, equip a bow with a gun appearance, fire and miss several Auto Shots, use a few class shots such as Cobra Shot and Kill Shot, switch its appearance to a bow and back, then run `/gunsilencer off` and `on`.
+Run `sh scripts/verify.sh` where Lua is installed (WSL works on Windows). It loads the shipped Lua file in Classic, Retail, and Forever client simulations and writes `Tests/artifacts/e2e-result.txt`. The [verification plan](Tests/verification-plan.md) records the failure cases it exercises. For an in-game check, equip a bow with a gun appearance, fire and miss several Auto Shots, use a few class shots such as Cobra Shot and Kill Shot, switch its appearance to a bow and back, then run `/gunsilencer off` and `on`. In Forever, also start Aimed Shot just before the Auto Shot swing timer expires: the blocked Auto Shot should stay silent, Aimed Shot should sound when it fires, and Auto Shot sounds should resume after completing or cancelling the cast.
 
 Mechanic's current `addon.validate` parser flags the comma-separated interface list as outdated. The BigWigs packager recognizes all six interface versions, so the CI verification uses the event-flow exercise and the release job uses the packager.
 

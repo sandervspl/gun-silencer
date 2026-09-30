@@ -71,6 +71,18 @@ end
 local muted = false
 local soundAvailable = true
 local muteGeneration = 0
+local aimedShotCastGUID
+
+local function isAimedShot(spellID)
+    if spellID == 19434 then
+        return true
+    end
+    if not spellID or not C_Spell or not C_Spell.GetSpellName then
+        return false
+    end
+    local aimedName = C_Spell.GetSpellName(19434)
+    return aimedName ~= nil and C_Spell.GetSpellName(spellID) == aimedName
+end
 
 local function getAppliedAppearanceItemID(slot)
     if not (C_Transmog and C_Transmog.GetSlotVisualInfo and
@@ -215,6 +227,10 @@ frame:SetScript("OnEvent", function(_, event, ...)
         if retail then
             -- Midnight disallows addons from registering the combat log.
             frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
+            frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
+            frame:RegisterUnitEvent("UNIT_SPELLCAST_STOP", "player")
+            frame:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", "player")
+            frame:RegisterUnitEvent("UNIT_SPELLCAST_INTERRUPTED", "player")
             if useRangedSwing then
                 frame:RegisterEvent("PLAYER_SWING")
             end
@@ -222,6 +238,7 @@ frame:SetScript("OnEvent", function(_, event, ...)
             frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         end
     elseif event == "PLAYER_ENTERING_WORLD" then
+        aimedShotCastGUID = nil
         if muted then
             -- Equipment can be briefly unavailable here; retain and reapply the mute.
             applyMutes(true)
@@ -232,14 +249,30 @@ frame:SetScript("OnEvent", function(_, event, ...)
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "TRANSMOGRIFY_SUCCESS" or
             event == "TRANSMOG_DISPLAYED_OUTFIT_CHANGED" then
         updateMutes()
+    elseif event == "UNIT_SPELLCAST_START" then
+        local unit, castGUID, spellID = ...
+        if unit == "player" and isAimedShot(spellID) then
+            aimedShotCastGUID = castGUID
+        end
+    elseif event == "UNIT_SPELLCAST_STOP" or event == "UNIT_SPELLCAST_FAILED" or
+            event == "UNIT_SPELLCAST_INTERRUPTED" then
+        local unit, castGUID = ...
+        if unit == "player" and castGUID == aimedShotCastGUID then
+            aimedShotCastGUID = nil
+        end
     elseif event == "UNIT_SPELLCAST_SUCCEEDED" then
-        local unit, _, spellID = ...
-        if muted and unit == "player" and ((spellID == 75 and not useRangedSwing) or isShotSpell(spellID)) then
+        local unit, castGUID, spellID = ...
+        if unit == "player" and castGUID == aimedShotCastGUID then
+            aimedShotCastGUID = nil
+        end
+        if muted and unit == "player" and
+                ((spellID == 75 and not useRangedSwing and not aimedShotCastGUID) or isShotSpell(spellID)) then
             playReplacement()
         end
     elseif event == "PLAYER_SWING" then
         local _, swingType = ...
-        if muted and swingType == rangedSwingType then
+        -- The swing timer can expire during Aimed Shot without firing a bullet.
+        if muted and swingType == rangedSwingType and not aimedShotCastGUID then
             playReplacement()
         end
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" and muted then

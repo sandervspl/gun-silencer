@@ -21,5 +21,8 @@ The addon can fail in these ways:
 17. A bow with a gun appearance remains silent because detection only sees the equipped bow, or an applied appearance change is missed without an equipment change.
 18. A gun with a bow appearance gets silenced, or a pending reload still plays after changing the appearance away from a gun.
 19. Clients that return separate transmog values instead of a structure fail to detect the applied appearance.
+20. A ranged swing or Auto Shot notification during Aimed Shot plays a phantom shot and schedules a reload even though no bullet fires.
+21. Suppressing that notification also silences Aimed Shot itself, a real shot's pending reload, or Auto Shots after completion, cancellation, interruption, or failure.
+22. Another unit's cast, an unrelated spell's success, or a late stop from an older cast incorrectly clears suppression; a higher rank of Aimed Shot is not recognized.
 
 `e2e.lua` loads the real addon in simulated Classic, Retail, and Forever client sessions and checks the complete event flow, chat commands, sound selection, and appearance changes. Run it through `scripts/verify.sh`; the script writes `Tests/artifacts/e2e-result.txt` with the command result. An in-game pass with a hunter and a bow using a gun appearance is still needed to confirm exact audio timing in the client.

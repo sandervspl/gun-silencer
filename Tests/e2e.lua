@@ -13,7 +13,7 @@ end
 
 local originalRandom = math.random
 
-local function session(kind, transmogScenario)
+local function session(kind, transmogScenario, aimedScenario)
     local retail = kind ~= "Classic"
     local forever = kind == "Forever"
     local state = {
@@ -210,6 +210,63 @@ local function session(kind, transmogScenario)
         return kind .. " transmog"
     end
 
+    if aimedScenario then
+        -- A real shot can still be reloading when Aimed Shot blocks the next swing.
+        local beforeAimed = #state.played
+        expectVariant(2)
+        autoShot("before-aimed")
+        fire("UNIT_SPELLCAST_START", "player", "aimed-1", 20900)
+        autoShot("blocked-auto-1")
+        autoShot("blocked-auto-2")
+        equal(#state.played, beforeAimed + 1, "Aimed Shot suppresses phantom Auto Shots")
+        equal(#state.timers, 1, "blocked Auto Shots schedule no reloads")
+        runTimers()
+        equal(state.played[beforeAimed + 2], soundPath("GunLoad", 2), "real shot still reloads during Aimed Shot")
+
+        fire("UNIT_SPELLCAST_START", "target", "other-aimed", 19434)
+        fire("UNIT_SPELLCAST_STOP", "target", "aimed-1", 20900)
+        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "unrelated", 187650)
+        autoShot("still-blocked")
+        equal(#state.played, beforeAimed + 2, "other casts do not end Aimed Shot suppression")
+
+        expectVariant(1)
+        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "aimed-1", 20900)
+        equal(state.played[beforeAimed + 3], soundPath("GunFire", 1), "completed Aimed Shot plays its own sound")
+        runTimers()
+        fire("UNIT_SPELLCAST_STOP", "player", "aimed-1", 20900)
+        ownShot(3)
+
+        for _, ending in ipairs({ "UNIT_SPELLCAST_STOP", "UNIT_SPELLCAST_INTERRUPTED", "UNIT_SPELLCAST_FAILED" }) do
+            fire("UNIT_SPELLCAST_START", "player", "aimed-old", 19434)
+            fire("UNIT_SPELLCAST_START", "player", "aimed-new", 19434)
+            fire(ending, "player", "aimed-old", 19434)
+            local beforeBlocked = #state.played
+            autoShot("late-stop-blocked")
+            equal(#state.played, beforeBlocked, "late cast end does not clear a newer Aimed Shot")
+            fire(ending, "player", "aimed-new", 19434)
+            ownShot(2)
+        end
+
+        -- Completion may deliver STOP before SUCCEEDED, and instant Aimed Shots have no START.
+        fire("UNIT_SPELLCAST_START", "player", "aimed-stop-first", 19434)
+        fire("UNIT_SPELLCAST_STOP", "player", "aimed-stop-first", 19434)
+        ownShot(1, nil, 19434)
+        ownShot(3, nil, 19434)
+        ownShot(2)
+        fire("UNIT_SPELLCAST_START", "target", "other-aimed", 19434)
+        ownShot(1)
+        fire("UNIT_SPELLCAST_START", "player", "other-spell", 187650)
+        ownShot(2)
+
+        -- A loading screen must not retain an abandoned cast.
+        fire("UNIT_SPELLCAST_START", "player", "aimed-before-world", 19434)
+        fire("PLAYER_ENTERING_WORLD")
+        ownShot(3)
+        equal(#state.randomVariants, 0, "all Aimed Shot scenario variants consumed")
+        math.random = originalRandom
+        return kind .. " Aimed Shot"
+    end
+
     if retail then
         ownShot(3)
         fire("UNIT_SPELLCAST_SUCCEEDED", "player", "cast-2", 187650)
@@ -366,4 +423,6 @@ print(session("Forever") .. ": PASS")
 print(session("Classic", true) .. ": PASS")
 print(session("Retail", true) .. ": PASS")
 print(session("Forever", true) .. ": PASS")
+print(session("Retail", false, true) .. ": PASS")
+print(session("Forever", false, true) .. ": PASS")
 print("Six sound assets and TOC: PASS")
