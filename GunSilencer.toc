@@ -2,7 +2,7 @@
 ## IconTexture: Interface\AddOns\GunSilencer\Media\icon
 ## Title: GunSilencer
 ## Author: sandervspl
-## Notes: Replaces your gun shots with a silenced sound
+## Notes: Mutes gun sounds globally and replaces your shots with a silenced sound
 ## Version: @project-version@
 ## DefaultState: enabled
 ## SavedVariables: GunSilencerDB

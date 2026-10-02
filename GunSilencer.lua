@@ -5,9 +5,13 @@ local frame = CreateFrame("Frame")
 local gunSounds = { 567617, 567721, 567718, 567722, 567719, 567720, 567723 }
 local soundDirectory = "Interface\\AddOns\\GunSilencer\\Sound\\Item\\Weapons\\Gun\\"
 local reloadDelay = 0.45
-local retail = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE
+local _, _, _, interfaceVersion = GetBuildInfo()
+-- Forever's 1.60 client has restricted combat logs even when its project ID
+-- identifies it as Classic. Use its interface version as well as Retail's ID.
+local forever = interfaceVersion >= 16000 and interfaceVersion < 20000
+local usePlayerSpellcasts = WOW_PROJECT_ID == WOW_PROJECT_MAINLINE or forever
 local rangedSwingType = Enum and Enum.PlayerSwingType and Enum.PlayerSwingType.Ranged
-local useRangedSwing = retail and rangedSwingType ~= nil
+local useRangedSwing = usePlayerSpellcasts and rangedSwingType ~= nil
 
 -- Gun-based shot abilities that generate a cast event instead of RANGE_DAMAGE.
 -- Auto Shot is handled by RANGE_DAMAGE/RANGE_MISSED in Classic.
@@ -69,6 +73,7 @@ local function isShotSpell(spellID)
 end
 
 local muted = false
+local replacing = false
 local soundAvailable = true
 local muteGeneration = 0
 local aimedShotCastGUID
@@ -138,15 +143,25 @@ local function applyMutes(shouldMute)
     end
 end
 
-local function updateMutes()
-    local shouldMute = GunSilencerDB.enabled and soundAvailable and isGunVisible()
-    if shouldMute == muted then
-        return
+local function updateMutes(force)
+    -- File mutes apply to every gun, regardless of the player's current weapon.
+    local shouldMute = GunSilencerDB.enabled and soundAvailable
+    local shouldReplace = shouldMute and isGunVisible()
+    if shouldMute ~= muted or force then
+        applyMutes(shouldMute)
+    end
+    if shouldMute ~= muted or shouldReplace ~= replacing or force then
+        muteGeneration = muteGeneration + 1
     end
 
-    applyMutes(shouldMute)
     muted = shouldMute
-    muteGeneration = muteGeneration + 1
+    replacing = shouldReplace
+end
+
+local function canPlayReplacement()
+    -- Inventory/appearance data can arrive after login without an equipment event.
+    updateMutes()
+    return replacing
 end
 
 local function playSound(path)
@@ -174,7 +189,7 @@ local function playReplacement()
 
     local generation = muteGeneration
     local function playReload()
-        if muted and muteGeneration == generation then
+        if canPlayReplacement() and muteGeneration == generation then
             playSound(soundDirectory .. "GunLoad" .. suffix)
         end
     end
@@ -225,8 +240,8 @@ frame:SetScript("OnEvent", function(_, event, ...)
             end
         end
         frame:RegisterUnitEvent("UNIT_SPELLCAST_START", "player")
-        if retail then
-            -- Midnight disallows addons from registering the combat log.
+        if usePlayerSpellcasts then
+            -- Midnight and Forever disallow addons from registering the combat log.
             frame:RegisterUnitEvent("UNIT_SPELLCAST_SUCCEEDED", "player")
             frame:RegisterUnitEvent("UNIT_SPELLCAST_STOP", "player")
             frame:RegisterUnitEvent("UNIT_SPELLCAST_FAILED", "player")
@@ -237,25 +252,22 @@ frame:SetScript("OnEvent", function(_, event, ...)
         else
             frame:RegisterEvent("COMBAT_LOG_EVENT_UNFILTERED")
         end
+        -- Reapply saved settings even if equipment is not available yet, and clear
+        -- any client mutes retained across a UI reload when the setting is off.
+        updateMutes(true)
     elseif event == "PLAYER_ENTERING_WORLD" then
         aimedShotCastGUID = nil
-        if muted then
-            -- Equipment can be briefly unavailable here; retain and reapply the mute.
-            applyMutes(true)
-            muteGeneration = muteGeneration + 1
-        else
-            updateMutes()
-        end
+        updateMutes(true)
     elseif event == "PLAYER_EQUIPMENT_CHANGED" or event == "TRANSMOGRIFY_SUCCESS" or
             event == "TRANSMOG_DISPLAYED_OUTFIT_CHANGED" then
         updateMutes()
     elseif event == "UNIT_SPELLCAST_START" then
         local unit, castGUID, spellID = ...
         if unit == "player" and isAimedShot(spellID) then
-            if retail then
+            if usePlayerSpellcasts then
                 aimedShotCastGUID = castGUID
             end
-            if muted then
+            if canPlayReplacement() then
                 playSound(soundDirectory .. "GunLoad01.ogg")
             end
         end
@@ -270,19 +282,20 @@ frame:SetScript("OnEvent", function(_, event, ...)
         if unit == "player" and castGUID == aimedShotCastGUID then
             aimedShotCastGUID = nil
         end
-        if muted and unit == "player" and
-                ((spellID == 75 and not useRangedSwing and not aimedShotCastGUID) or isShotSpell(spellID)) then
+        if unit == "player" and
+                ((spellID == 75 and not useRangedSwing and not aimedShotCastGUID) or isShotSpell(spellID)) and
+                canPlayReplacement() then
             playReplacement()
         end
     elseif event == "PLAYER_SWING" then
         local _, swingType = ...
         -- The swing timer can expire during Aimed Shot without firing a bullet.
-        if muted and swingType == rangedSwingType and not aimedShotCastGUID then
+        if swingType == rangedSwingType and not aimedShotCastGUID and canPlayReplacement() then
             playReplacement()
         end
     elseif event == "COMBAT_LOG_EVENT_UNFILTERED" and muted then
         local _, subevent, _, sourceGUID, _, _, _, _, _, _, _, spellID = CombatLogGetCurrentEventInfo()
-        if sourceGUID == UnitGUID("player") then
+        if sourceGUID == UnitGUID("player") and canPlayReplacement() then
             if subevent == "RANGE_DAMAGE" or subevent == "RANGE_MISSED" then
                 playReplacement()
             elseif subevent == "SPELL_CAST_SUCCESS" and isShotSpell(spellID) then

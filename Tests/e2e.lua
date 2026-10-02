@@ -12,15 +12,15 @@ local function soundPath(kind, variant)
 end
 
 local originalRandom = math.random
+local originalGunSounds = { 567617, 567721, 567718, 567722, 567719, 567720, 567723 }
 
-local function session(kind, transmogScenario, aimedScenario)
+local function session(kind, transmogScenario, aimedScenario, loginScenario, projectID)
     local retail = kind ~= "Classic"
     local forever = kind == "Forever"
     local state = {
         weapon = transmogScenario and 1002 or 1001,
         appearance = transmogScenario and 2001 or nil,
-        muted = {},
-        unmuted = {},
+        mutedFiles = {},
         played = {},
         timers = {},
         events = {},
@@ -32,13 +32,25 @@ local function session(kind, transmogScenario, aimedScenario)
     }
 
     WOW_PROJECT_MAINLINE = 1
-    WOW_PROJECT_ID = retail and 1 or 2
+    WOW_PROJECT_ID = projectID or (kind == "Retail" and 1 or 2)
+    GetBuildInfo = function()
+        return forever and "1.60.1" or retail and "12.0.1" or "1.15.9",
+            "70170", "Oct 1 2026", forever and 16001 or retail and 120001 or 11509
+    end
     Enum = {
         TransmogType = { Appearance = 0 },
         TransmogModification = { Main = 0, None = 0 },
         PlayerSwingType = forever and { MainHand = 0, OffHand = 1, Ranged = 2 } or nil,
     }
-    GunSilencerDB = nil
+    GunSilencerDB = loginScenario == "saved-off" and { enabled = false } or
+        loginScenario == "saved-on" and { enabled = true } or nil
+    if loginScenario then
+        state.weapon = nil
+        if loginScenario == "saved-off" then
+            -- The client can retain file mutes across UI reloads.
+            for _, id in ipairs(originalGunSounds) do state.mutedFiles[id] = true end
+        end
+    end
     SlashCmdList = {}
     DEFAULT_CHAT_FRAME = { AddMessage = function(_, message) state.messages[#state.messages + 1] = message end }
     local spellNames = {
@@ -87,8 +99,12 @@ local function session(kind, transmogScenario, aimedScenario)
         return nil
     end
     UnitGUID = function() return "Player-1" end
-    MuteSoundFile = function(id) state.muted[#state.muted + 1] = id end
-    UnmuteSoundFile = function(id) state.unmuted[#state.unmuted + 1] = id end
+    MuteSoundFile = function(id)
+        state.mutedFiles[id] = true
+    end
+    UnmuteSoundFile = function(id)
+        state.mutedFiles[id] = nil
+    end
     PlaySoundFile = function(path, channel)
         equal(channel, "SFX", "sound channel")
         assert(path:sub(1, #addonSoundDirectory) == addonSoundDirectory, "sound must use the addon directory")
@@ -111,7 +127,11 @@ local function session(kind, transmogScenario, aimedScenario)
     CreateFrame = function()
         local frame = {}
         state.frame = frame
-        function frame:RegisterEvent(name) state.events[name] = true end
+        function frame:RegisterEvent(name)
+            assert(not (retail and name == "COMBAT_LOG_EVENT_UNFILTERED"),
+                "ADDON_ACTION_FORBIDDEN: Frame:RegisterEvent(COMBAT_LOG_EVENT_UNFILTERED)")
+            state.events[name] = true
+        end
         function frame:RegisterUnitEvent(name) state.events[name] = true end
         function frame:SetScript(_, fn) state.handler = fn end
         return frame
@@ -165,11 +185,69 @@ local function session(kind, transmogScenario, aimedScenario)
             fire("COMBAT_LOG_EVENT_UNFILTERED")
         end
     end
+    local function gunSoundsMuted(expected, label)
+        -- Native sound playback uses the same file mute regardless of its source.
+        for _, id in ipairs(originalGunSounds) do
+            equal(state.mutedFiles[id] == true, expected, label .. " (file " .. id .. ")")
+        end
+    end
+    fire("ADDON_LOADED", "AnotherAddon")
     fire("ADDON_LOADED", "GunSilencer")
+    gunSoundsMuted(loginScenario ~= "saved-off", "gun sounds restored from settings before entering the world")
     fire("PLAYER_ENTERING_WORLD")
-    equal(#state.muted, 7, "initial gun mutes")
+    gunSoundsMuted(loginScenario ~= "saved-off", "initial gun mutes")
     equal(state.events.COMBAT_LOG_EVENT_UNFILTERED, not retail or nil, "combat log registration")
     equal(state.events.PLAYER_SWING, forever or nil, "Forever ranged swing registration")
+
+    if loginScenario then
+        equal(GunSilencerDB.enabled, loginScenario ~= "saved-off", "saved setting survives login")
+        autoShot("inventory-not-ready")
+        equal(#state.played, 0, "missing equipment does not invent a player gunshot")
+        state.weapon = 1001
+        if loginScenario == "saved-off" then
+            autoShot("still-disabled")
+            equal(#state.played, 0, "saved off suppresses replacement sounds")
+            SlashCmdList.GUNSILENCER("on")
+        end
+        -- No equipment event or slash command is needed when inventory becomes ready.
+        ownShot(2)
+        expectVariant(1)
+        autoShot("pending-before-appearance-change")
+        state.appearance = 2002
+        fire("TRANSMOGRIFY_SUCCESS")
+        gunSoundsMuted(true, "nearby guns stay muted while player uses a bow appearance")
+        autoShot("bow-appearance")
+        state.appearance = 2001
+        fire("TRANSMOGRIFY_SUCCESS")
+        local beforeTimers = #state.played
+        runTimers()
+        equal(#state.played, beforeTimers, "switching appearance away and back cancels the old reload")
+        ownShot(3)
+
+        SlashCmdList.GUNSILENCER("off")
+        gunSoundsMuted(false, "off restores nearby guns")
+        fire("PLAYER_ENTERING_WORLD")
+        equal(GunSilencerDB.enabled, false, "off survives loading screens")
+        gunSoundsMuted(false, "loading screens retain off")
+        state.weapon = 1002
+        state.appearance = nil
+        fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
+        SlashCmdList.GUNSILENCER("on")
+        gunSoundsMuted(true, "enabling with a bow silences nearby guns")
+        autoShot("bow-after-enabling")
+        equal(#state.played, beforeTimers + 2, "bow attacks have no player gun replacements")
+        -- Simulate a sound-engine reset during the next loading screen.
+        state.mutedFiles = {}
+        state.weapon = nil
+        fire("PLAYER_ENTERING_WORLD")
+        gunSoundsMuted(true, "loading screens reapply global gun mutes without inventory")
+        state.weapon = 1002
+        state.appearance = 2001
+        ownShot(1)
+        equal(#state.randomVariants, 0, "all login scenario variants consumed")
+        math.random = originalRandom
+        return kind .. " login " .. loginScenario
+    end
 
     if transmogScenario then
         equal(state.events.TRANSMOGRIFY_SUCCESS, true, "appearance change event registration")
@@ -184,7 +262,7 @@ local function session(kind, transmogScenario, aimedScenario)
         autoShot("before-appearance-change")
         state.appearance = 2002
         fire(kind == "Retail" and "TRANSMOG_DISPLAYED_OUTFIT_CHANGED" or "TRANSMOGRIFY_SUCCESS")
-        equal(#state.unmuted, 7, "bow appearance restores original gun sounds")
+        gunSoundsMuted(true, "bow appearance keeps nearby guns muted")
         runTimers()
         equal(#state.played, beforeChange + 1, "appearance change cancels delayed reload")
         autoShot("bow-appearance-shot")
@@ -197,18 +275,18 @@ local function session(kind, transmogScenario, aimedScenario)
 
         state.appearance = 2001
         fire("TRANSMOGRIFY_SUCCESS")
-        equal(#state.muted, 14, "gun appearance reapplies mutes without swapping equipment")
+        gunSoundsMuted(true, "gun appearance retains global mutes")
         ownShot(3)
 
         state.weapon = 1001
         state.appearance = 2002
         fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
-        equal(#state.unmuted, 14, "gun equipped with bow appearance is not silenced")
+        gunSoundsMuted(true, "gun with bow appearance keeps nearby guns muted")
         autoShot("gun-with-bow-appearance")
         equal(#state.played, beforeChange + 3, "gun with bow appearance shot ignored")
         state.appearance = nil
         fire("TRANSMOGRIFY_SUCCESS")
-        equal(#state.muted, 21, "plain gun is silenced again")
+        gunSoundsMuted(true, "plain gun is silenced again")
         ownShot(1)
         equal(#state.randomVariants, 0, "all transmog shot variants consumed")
         math.random = originalRandom
@@ -334,17 +412,14 @@ local function session(kind, transmogScenario, aimedScenario)
     equal(state.played[beforeOverlap + 3], soundPath("GunLoad", 2), "first overlapping reload stays paired")
     equal(state.played[beforeOverlap + 4], soundPath("GunLoad", 1), "second overlapping reload stays paired")
 
-    local beforeHearthMutes = #state.muted
     local beforeHearthSounds = #state.played
     expectVariant(2)
     autoShot("cast-before-hearth")
     equal(#state.timers, 1, "reload pending before hearth")
     -- Equipment can be briefly unavailable when the loading-screen event fires.
     state.weapon = nil
-    local beforeHearthUnmutes = #state.unmuted
     fire("PLAYER_ENTERING_WORLD")
-    equal(#state.muted, beforeHearthMutes + 7, "hearth reapplies all gun mutes")
-    equal(#state.unmuted, beforeHearthUnmutes, "hearth does not unmute an equipped gun")
+    gunSoundsMuted(true, "hearth reapplies all gun mutes")
     state.weapon = 1001
     runTimers()
     equal(#state.played, beforeHearthSounds + 1, "hearth cancels the old reload")
@@ -356,7 +431,7 @@ local function session(kind, transmogScenario, aimedScenario)
     equal(state.played[beforePending + 1], soundPath("GunFire", 2), "pending shot variant")
     state.weapon = 1002
     fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
-    equal(#state.unmuted, 7, "bow restores gun sounds")
+    gunSoundsMuted(true, "bow keeps nearby guns muted")
     runTimers()
     equal(#state.played, beforePending + 1, "bow cancels delayed reload")
     local oldCount = #state.played
@@ -366,9 +441,9 @@ local function session(kind, transmogScenario, aimedScenario)
     SlashCmdList.GUNSILENCER("off")
     state.weapon = 1001
     fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
-    equal(#state.muted, 14, "disabled addon does not mute")
+    gunSoundsMuted(false, "disabled addon does not mute")
     SlashCmdList.GUNSILENCER("on")
-    equal(#state.muted, 21, "enabling remutes")
+    gunSoundsMuted(true, "enabling remutes")
     expectVariant(3)
     autoShot("cast-5")
     equal(state.played[oldCount + 1], soundPath("GunFire", 3), "shot after reenabling")
@@ -386,11 +461,10 @@ local function session(kind, transmogScenario, aimedScenario)
     equal(state.played[beforeFallback + 2], soundPath("GunLoad", 2), "fallback reload")
 
     state.soundEffectsEnabled = false
-    local beforeMutedSFX = #state.unmuted
     local beforeDisabledSFX = #state.played
     expectVariant(1)
     autoShot("cast-muted-sfx")
-    equal(#state.unmuted, beforeMutedSFX, "disabled Sound Effects do not turn off replacements")
+    gunSoundsMuted(true, "disabled Sound Effects do not turn off replacements")
     equal(#state.played, beforeDisabledSFX, "disabled Sound Effects make no sound")
     state.soundEffectsEnabled = true
     expectVariant(1)
@@ -402,11 +476,11 @@ local function session(kind, transmogScenario, aimedScenario)
     local beforeFailure = #state.played
     expectVariant(2)
     autoShot("cast-failed-audio")
-    equal(#state.unmuted, 21, "failed sound restores original gun sounds")
+    gunSoundsMuted(false, "failed sound restores original gun sounds")
     equal(#state.played, beforeFailure, "failed sound is not counted as playback")
     equal(#state.messages, 5, "failed sound reports the fallback once")
     fire("PLAYER_EQUIPMENT_CHANGED", retail and 16 or 18)
-    equal(#state.muted, 28, "failed sound does not remute on equipment updates")
+    gunSoundsMuted(false, "failed sound does not remute on equipment updates")
     autoShot("cast-after-failure")
     equal(#state.played, beforeFailure, "shots after audio failure use restored game sounds")
     equal(#state.messages, 5, "audio failure warning is shown only once")
@@ -434,4 +508,18 @@ print(session("Retail", true) .. ": PASS")
 print(session("Forever", true) .. ": PASS")
 print(session("Retail", false, true) .. ": PASS")
 print(session("Forever", false, true) .. ": PASS")
+for _, kind in ipairs({ "Classic", "Retail", "Forever" }) do
+    for _, setting in ipairs({ "default-on", "saved-on", "saved-off" }) do
+        print(session(kind, false, false, setting) .. ": PASS")
+    end
+end
 print("Six sound assets and TOC: PASS")
+for _, projectID in ipairs({ 1, 11 }) do
+    local label = "Forever project " .. projectID
+    print(session("Forever", false, false, nil, projectID) .. " (" .. label .. "): PASS")
+    print(session("Forever", true, false, nil, projectID) .. " (" .. label .. "): PASS")
+    print(session("Forever", false, true, nil, projectID) .. " (" .. label .. "): PASS")
+    for _, setting in ipairs({ "default-on", "saved-on", "saved-off" }) do
+        print(session("Forever", false, false, setting, projectID) .. " (" .. label .. "): PASS")
+    end
+end

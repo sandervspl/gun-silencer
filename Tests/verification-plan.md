@@ -2,8 +2,8 @@
 
 The addon can fail in these ways:
 
-1. It mutes gun sounds while the player has a bow or no ranged weapon.
-2. It leaves default gun sounds muted after the gun is unequipped or the addon is disabled.
+1. It leaves other players' default gun sounds audible while enabled because the player has a bow or no ranged weapon.
+2. It leaves default gun sounds muted after the addon is disabled, including mutes retained across a UI reload.
 3. It plays a replacement for another player's attack, for a trap, or for a spell that is not a gun shot.
 4. It plays two replacements for one Classic Auto Shot or misses a ranged miss.
 5. Any of the six shipped sounds differs from the WowInterface pack, is absent from the package, or cannot be played at the addon path.
@@ -25,5 +25,10 @@ The addon can fail in these ways:
 21. Suppressing that notification also silences Aimed Shot itself, a real shot's pending reload, or Auto Shots after completion, cancellation, interruption, or failure.
 22. Another unit's cast, an unrelated spell's success, or a late stop from an older cast incorrectly clears suppression; a higher rank of Aimed Shot is not recognized.
 23. Starting Aimed Shot with a visible gun is silent because its normal loading cue is muted; another unit's cast or a cast while gun sounds are not muted incorrectly plays the replacement cue.
+24. Initial login has no equipment data yet, so a default-on or saved-on setting fails to mute gun sounds until a slash command or equipment event occurs.
+25. Equipment becomes available after login without another equipment event, but the player's gun still has no replacement sound; a bow incorrectly gets a gun replacement.
+26. Global muting survives a weapon or appearance change, but a pending player reload also survives changing away from a gun and back before its timer fires.
+27. A saved-off setting is overwritten at login or by a loading screen, or re-enabling with a bow fails to silence nearby gunfire.
+28. Forever reports a non-Retail project ID after a client update, so login attempts the protected combat-log registration instead of using ranged swings and player spellcasts. A client-ID change must not break Aimed Shot suppression, transmog changes, delayed reload cancellation, or saved settings.
 
 `e2e.lua` loads the real addon in simulated Classic, Retail, and Forever client sessions and checks the complete event flow, chat commands, sound selection, and appearance changes. Run it through `scripts/verify.sh`; the script writes `Tests/artifacts/e2e-result.txt` with the command result. An in-game pass with a hunter and a bow using a gun appearance is still needed to confirm exact audio timing in the client.
