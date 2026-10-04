@@ -5,6 +5,7 @@ local frame = CreateFrame("Frame")
 local gunSounds = { 567617, 567721, 567718, 567722, 567719, 567720, 567723 }
 local soundDirectory = "Interface\\AddOns\\GunSilencer\\Sound\\Item\\Weapons\\Gun\\"
 local reloadDelay = 0.45
+local shotSoundInterval = 0.2
 local _, _, _, interfaceVersion = GetBuildInfo()
 -- Forever's 1.60 client has restricted combat logs even when its project ID
 -- identifies it as Classic. Use its interface version as well as Retail's ID.
@@ -77,6 +78,7 @@ local replacing = false
 local soundAvailable = true
 local muteGeneration = 0
 local aimedShotCastGUID
+local lastShotSoundTime
 
 local function isAimedShot(spellID)
     if spellID == 19434 then
@@ -152,6 +154,7 @@ local function updateMutes(force)
     end
     if shouldMute ~= muted or shouldReplace ~= replacing or force then
         muteGeneration = muteGeneration + 1
+        lastShotSoundTime = nil
     end
 
     muted = shouldMute
@@ -181,6 +184,11 @@ local function playSound(path)
 end
 
 local function playReplacement()
+    local now = GetTime()
+    -- Ability and Auto Shot events can arrive together. Keep one shot/reload pair.
+    if lastShotSoundTime and now - lastShotSoundTime < shotSoundInterval then
+        return
+    end
     local variant = math.random(1, 3)
     local suffix = "0" .. variant .. ".ogg"
     if not playSound(soundDirectory .. "GunFire" .. suffix) then
@@ -188,6 +196,7 @@ local function playReplacement()
     end
 
     local generation = muteGeneration
+    lastShotSoundTime = now
     local function playReload()
         if canPlayReplacement() and muteGeneration == generation then
             playSound(soundDirectory .. "GunLoad" .. suffix)

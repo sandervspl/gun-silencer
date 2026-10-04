@@ -29,6 +29,8 @@ local function session(kind, transmogScenario, aimedScenario, loginScenario, pro
         soundEffectsEnabled = true,
         messages = {},
         randomVariants = {},
+        time = 0,
+        eventStep = 1,
     }
 
     WOW_PROJECT_MAINLINE = 1
@@ -99,6 +101,7 @@ local function session(kind, transmogScenario, aimedScenario, loginScenario, pro
         return nil
     end
     UnitGUID = function() return "Player-1" end
+    GetTime = function() return state.time end
     MuteSoundFile = function(id)
         state.mutedFiles[id] = true
     end
@@ -149,10 +152,12 @@ local function session(kind, transmogScenario, aimedScenario, loginScenario, pro
 
     assert(loadfile("GunSilencer.lua"))("GunSilencer")
     local function fire(event, ...)
+        state.time = state.time + state.eventStep
         assert(state.events[event], "event was not registered: " .. event)
         state.handler(state.frame, event, ...)
     end
     local function runTimers()
+        state.time = state.time + 0.45
         local pending = state.timers
         state.timers = {}
         for _, callback in ipairs(pending) do
@@ -402,12 +407,25 @@ local function session(kind, transmogScenario, aimedScenario, loginScenario, pro
 
     local beforeOverlap = #state.played
     expectVariant(2)
-    autoShot("overlap-1")
-    expectVariant(1)
+    if retail then
+        fire("UNIT_SPELLCAST_SUCCEEDED", "player", "overlap-ability", 3044)
+    else
+        state.log = { "SPELL_CAST_SUCCESS", "Player-1", 3044 }
+        fire("COMBAT_LOG_EVENT_UNFILTERED")
+    end
+    state.eventStep = 0.05
     autoShot("overlap-2")
+    autoShot("overlap-3")
+    autoShot("overlap-4")
     equal(state.played[beforeOverlap + 1], soundPath("GunFire", 2), "first overlapping shot")
-    equal(state.played[beforeOverlap + 2], soundPath("GunFire", 1), "second overlapping shot")
-    equal(#state.timers, 2, "both overlapping reloads scheduled")
+    equal(#state.played, beforeOverlap + 1, "close ability and Auto Shots share one gunshot")
+    equal(#state.timers, 1, "suppressed shots schedule no extra reloads")
+    state.eventStep = 0.06
+    expectVariant(1)
+    autoShot("after-overlap-window")
+    equal(state.played[beforeOverlap + 2], soundPath("GunFire", 1), "later shot plays without extending suppression")
+    equal(#state.timers, 2, "separated shots each schedule a reload")
+    state.eventStep = 1
     runTimers()
     equal(state.played[beforeOverlap + 3], soundPath("GunLoad", 2), "first overlapping reload stays paired")
     equal(state.played[beforeOverlap + 4], soundPath("GunLoad", 1), "second overlapping reload stays paired")

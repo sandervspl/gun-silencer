@@ -31,4 +31,6 @@ The addon can fail in these ways:
 27. A saved-off setting is overwritten at login or by a loading screen, or re-enabling with a bow fails to silence nearby gunfire.
 28. Forever reports a non-Retail project ID after a client update, so login attempts the protected combat-log registration instead of using ranged swings and player spellcasts. A client-ID change must not break Aimed Shot suppression, transmog changes, delayed reload cancellation, or saved settings.
 
+29. Closely spaced ability and Auto Shot events play overlapping gunshots or extra reloads; suppressed events extend the window and silence later shots that should play.
+
 `e2e.lua` loads the real addon in simulated Classic, Retail, and Forever client sessions and checks the complete event flow, chat commands, sound selection, and appearance changes. Run it through `scripts/verify.sh`; the script writes `Tests/artifacts/e2e-result.txt` with the command result. An in-game pass with a hunter and a bow using a gun appearance is still needed to confirm exact audio timing in the client.
